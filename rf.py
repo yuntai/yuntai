@@ -4,13 +4,10 @@ import scipy
 from pathlib import Path
 import scipy.integrate
 
-def run(df, col, d=1e7, mid_freq=2409400000.0):
-    df = df.copy()
+def run(df, col, mid_freq=2409400000.0/1e7):
     vars_ = {}
-    
-    df = df[['GHz', col]]
 
-    mid_ix = df.set_index('GHz').index.get_loc(mid_freq/d)
+    mid_ix = df.set_index('GHz').index.get_loc(mid_freq)
 
     x_coords = df['GHz'].values[[0, -1]]
     y_coords = df[col].values[[0, -1]]
@@ -19,18 +16,16 @@ def run(df, col, d=1e7, mid_freq=2409400000.0):
     df['base_line'] = m * df['GHz'] + c
     df['val'] = df['base_line'] - df[col]
 
-    vals = df.val
-
-    P1Half = vals.loc[:mid_ix]
-    P2Half = vals.loc[mid_ix:]
+    P1Half = df.loc[:mid_ix, 'val']
+    P2Half = df.loc[mid_ix:, 'val']
     P1_ix = P1Half.idxmax()
     P2_ix = P2Half.idxmax()
 
     P1 = df.loc[P1_ix, 'GHz']
     P2 = df.loc[P2_ix, 'GHz']
 
-    Mm_L = vals.loc[P1_ix]
-    Mm_R = vals.loc[P2_ix]
+    Mm_L = df.loc[P1_ix, 'val']
+    Mm_R = df.loc[P2_ix, 'val']
 
     vars_['Mm_L'] = Mm_L
     vars_['Mm_R'] = Mm_R
@@ -43,16 +38,14 @@ def run(df, col, d=1e7, mid_freq=2409400000.0):
 
     def get_lev_index(PHalf, Mm, lev, p_ix):
         LH, RH = PHalf.loc[:p_ix], PHalf.loc[p_ix:]
-        LH = LH.sort_values().reset_index()
-        RH = RH.sort_values().reset_index()
-        ix_l = LH['index'][LH['val'].searchsorted(Mm*lev, side='left')]
-        ix_r = RH['index'][RH['val'].searchsorted(Mm*lev, side='right')]
+        ix_l = LH.searchsorted(Mm*lev, side='right')
+        ix_r = RH.searchsorted(Mm*lev, side='left')
         return ix_l, ix_r
 
     for lev in [0.9, 0.6, 0.3]:
         ix_ll, ix_lr = get_lev_index(P1Half, Mm_L, lev, P1_ix)
         ix_rl, ix_rr = get_lev_index(P2Half, Mm_R, lev, P2_ix)
-        a, b, c ,d = df.loc[[ix_ll, ix_lr, ix_rl, ix_rr], 'GHz']
+        a, b, c, d = df.loc[[ix_ll, ix_lr, ix_rl, ix_rr], 'GHz']
         vars_[f'{lev}_Mm_LL'] = a
         vars_[f'{lev}_Mm_LR'] = b
         vars_[f'{lev}_Mm_RL'] = c
@@ -87,14 +80,14 @@ def run(df, col, d=1e7, mid_freq=2409400000.0):
     y_coords = np.array([0, Mm_L, 0])
     eq = np.poly1d(np.polyfit(x_coords, y_coords, 2))
     parabolic_a_l, *_ = scipy.integrate.quad(eq, x_coords[0], x_coords[-1])
-    vars_["2nd_coeff_L"] = eq[0]
+    vars_["2nd_coeff_L"] = eq[2]
 
     P2_ix_p = df.index[-1] - (df.index[-1] - P2_ix) * 2
     x_coords = df.loc[[P2_ix_p,P2_ix,df.index[-1]], 'GHz'].values
     y_coords = np.array([0, Mm_R, 0])
     eq = np.poly1d(np.polyfit(x_coords, y_coords, 2))
     parabolic_a_r, *_ = scipy.integrate.quad(eq, x_coords[0], x_coords[-1])
-    vars_["2nd_coeff_R"] = eq[0]
+    vars_["2nd_coeff_R"] = eq[2]
 
     vars_["para_area_L"] = parabolic_a_l
     vars_["para_area_R"] = parabolic_a_r
