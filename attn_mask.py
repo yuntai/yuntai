@@ -10,6 +10,7 @@ nopeek_mask = (torch.triu(torch.ones(seqlen, seqlen), diagonal=0)==0).type(torch
 x = torch.rand(8, 8)
 mask = torch.tensor([0,0,0,0,1,1,1,1])
 mask = torch.einsum('i, j->ij', mask, mask)
+print(mask)
 
 mask_peek = mask * peek_mask
 new_peek_mask = -1e20 * torch.ones_like(mask_peek)
